@@ -1,8 +1,8 @@
 //
 // rsp/functions.c: RSP execution functions.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -22,62 +22,79 @@
 #include "vr4300/interface.h"
 
 // Mask to negate second operand if subtract operation.
+#if defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+static inline uint32_t rsp_addsub_mask(uint32_t iw)
+{
+  uint32_t mask;
+  __asm__("shr $2,       %k[iwiw];"
+          "sbb %k[mask], %k[mask];"
+    : [mask] "=r" (mask), [iwiw] "+r" (iw) : : "cc");
+  return mask;
+}
+#else
 cen64_align(static const uint32_t rsp_addsub_lut[4], 16) = {
   0x0U, ~0x0U, ~0x0U, ~0x0U
 };
-
-// Mask to select outputs for bitwise operations.
-cen64_align(static const uint32_t rsp_bitwise_lut[4][2], 32) = {
-  {~0U,  0U}, // AND
-  {~0U, ~0U}, // OR
-  { 0U, ~0U}, // XOR
-  { 0U,  0U}, // -
-};
+static inline uint32_t rsp_addsub_mask(uint32_t iw)
+{
+  return rsp_addsub_lut[iw & 0x2];
+}
+#endif
 
 // Mask to denote which part of the vector to load/store.
-cen64_align(static const uint16_t rsp_bdls_lut[4][4], CACHE_LINE_SIZE) = {
-  {0xFF00, 0x0000, 0x0000, 0x0000}, // B
-  {0xFFFF, 0x0000, 0x0000, 0x0000}, // S
-  {0xFFFF, 0xFFFF, 0x0000, 0x0000}, // L
-  {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF}, // D
+cen64_align(static const uint16_t rsp_bdls_lut[2][4][4], CACHE_LINE_SIZE) = {
+  {
+    {0x00FF, 0x0000, 0x0000, 0x0000}, // B
+    {0xFFFF, 0x0000, 0x0000, 0x0000}, // S
+    {0xFFFF, 0xFFFF, 0x0000, 0x0000}, // L
+    {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF}, // D
+  },
+
+  {
+    {0xFF00, 0x0000, 0x0000, 0x0000}, // B
+    {0xFFFF, 0x0000, 0x0000, 0x0000}, // S
+    {0xFFFF, 0xFFFF, 0x0000, 0x0000}, // L
+    {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF}, // D
+  }
 };
 
 cen64_align(static const uint16_t rsp_qr_lut[16][8], CACHE_LINE_SIZE) = {
   {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
-  {0x00FF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
+  {0xFF00, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
   {0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
-  {0x0000, 0x00FF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
+  {0x0000, 0xFF00, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
 
   {0x0000, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
-  {0x0000, 0x0000, 0x00FF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
+  {0x0000, 0x0000, 0xFF00, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
   {0x0000, 0x0000, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
-  {0x0000, 0x0000, 0x0000, 0x00FF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
+  {0x0000, 0x0000, 0x0000, 0xFF00, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
 
   {0x0000, 0x0000, 0x0000, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
-  {0x0000, 0x0000, 0x0000, 0x0000, 0x00FF, 0xFFFF, 0xFFFF, 0xFFFF},
+  {0x0000, 0x0000, 0x0000, 0x0000, 0xFF00, 0xFFFF, 0xFFFF, 0xFFFF},
   {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF},
-  {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x00FF, 0xFFFF, 0xFFFF},
+  {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0xFF00, 0xFFFF, 0xFFFF},
 
   {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0xFFFF, 0xFFFF},
-  {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x00FF, 0xFFFF},
+  {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0xFF00, 0xFFFF},
   {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0xFFFF},
-  {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x00FF},
+  {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0xFF00}
 };
 
 // Mask to select link address register for some branches.
-cen64_align(static const uint32_t rsp_branch_lut[2], 8) = {
-  ~0U, 0U
-};
+static inline uint32_t rsp_branch_mask(uint32_t iw, unsigned index) {
+  iw = (uint32_t)(   (int32_t)(iw << (31 - index)) >> 31  );
+  return ~iw; /* ones' complement must be done last on return */
+}
 
 // Mask to selectively sign-extend loaded values.
-cen64_align(static const uint32_t rsp_load_sex_mask[2][4], 32) = {
-  {~0U,   ~0U,     0U, ~0U}, // sex
-  {0xFFU, 0xFFFFU, 0U, ~0U}, // zex
+cen64_align(static const uint32_t rsp_load_sex_mask[8], 32) = {
+  ~0U,   ~0U,     0U, ~0U, // sex
+  0xFFU, 0xFFFFU, 0U, ~0U, // zex
 };
 
 // Function to sign-extend 6-bit values.
 static inline unsigned sign_extend_6(int i) {
-  return i | -(i & 0x40);
+  return (i << (32 - 7)) >> (32 - 7);
 }
 
 //
@@ -107,7 +124,7 @@ void RSP_ADDIU_LUI_SUBIU(struct rsp *rsp,
 void RSP_ADDU_SUBU(struct rsp *rsp,
   uint32_t iw, uint32_t rs, uint32_t rt) {
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
-  uint32_t mask = rsp_addsub_lut[iw & 0x2];
+  uint32_t mask = rsp_addsub_mask(iw);
 
   unsigned dest;
   uint32_t rd;
@@ -128,14 +145,18 @@ void RSP_ADDU_SUBU(struct rsp *rsp,
 void RSP_AND_OR_XOR(struct rsp *rsp,
   uint32_t iw, uint32_t rs, uint32_t rt) {
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
-  uint32_t and_mask = rsp_bitwise_lut[iw & 0x3][0];
-  uint32_t xor_mask = rsp_bitwise_lut[iw & 0x3][1];
 
   unsigned dest;
-  uint32_t rd;
+  uint32_t rd, rand, rxor;
 
   dest = GET_RD(iw);
-  rd = ((rs & rt) & and_mask) | ((rs ^ rt) & xor_mask);
+  rand = rs & rt;
+  rxor = rs ^ rt;
+  rd = rand + rxor; // lea
+  if((iw & 1) == 0) // cmov
+    rd = rxor;
+  if((iw & 3) == 0) // cmov
+    rd = rand;
 
   exdf_latch->result.result = rd;
   exdf_latch->result.dest = dest;
@@ -149,16 +170,21 @@ void RSP_AND_OR_XOR(struct rsp *rsp,
 void RSP_ANDI_ORI_XORI(struct rsp *rsp,
   uint32_t iw, uint32_t rs, uint32_t rt) {
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
-  uint32_t and_mask = rsp_bitwise_lut[iw >> 26 & 0x3][0];
-  uint32_t xor_mask = rsp_bitwise_lut[iw >> 26 & 0x3][1];
 
   unsigned dest;
+  uint32_t rd, rand, rxor;
 
   dest = GET_RT(iw);
   rt = (uint16_t) iw;
-  rt = ((rs & rt) & and_mask) | ((rs ^ rt) & xor_mask);
+  rand = rs & rt;
+  rxor = rs ^ rt;
+  rd = rand + rxor; // lea
+  if((iw & 67108864) == 0) // cmov
+    rd = rxor;
+  if((iw & 201326592) == 0) // cmov
+    rd = rand;
 
-  exdf_latch->result.result = rt;
+  exdf_latch->result.result = rd;
   exdf_latch->result.dest = dest;
 }
 
@@ -221,7 +247,7 @@ void RSP_BGEZAL_BLTZAL(
   bool is_ge = iw >> 16 & 0x1;
   bool cmp = (int32_t) rs < 0;
 
-  exdf_latch->result.result = 0x1000 | (rdex_latch->common.pc + 8);
+  exdf_latch->result.result = rdex_latch->common.pc + 8;
   exdf_latch->result.dest = RSP_REGISTER_RA;
 
   if (cmp == is_ge)
@@ -284,9 +310,10 @@ cen64_hot void RSP_INT_MEM(struct rsp *rsp,
 
   uint32_t address = rs + (int16_t) iw;
   uint32_t sel_mask = (int32_t) (iw << 2) >> 31;
-  unsigned request_size = (iw >> 26 & 0x3);
+  unsigned request_index = (iw >> 26 & 0x7);
+  uint32_t rdqm = rsp_load_sex_mask[request_index];
+  unsigned request_size = request_index & 0x3;
   unsigned lshiftamt = (3 - request_size) << 3;
-  uint32_t rdqm = rsp_load_sex_mask[iw >> 28 & 0x1][request_size];
   uint32_t wdqm = ~0U << lshiftamt;
 
   exdf_latch->request.addr = address;
@@ -323,11 +350,10 @@ void RSP_J_JAL(struct rsp *rsp,
   struct rsp_rdex_latch *rdex_latch = &rsp->pipeline.rdex_latch;
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
 
-  bool is_jal = iw >> 26 & 0x1;
   uint32_t target = iw << 2 & 0xFFC;
-  uint32_t mask = rsp_branch_lut[is_jal];
+  uint32_t mask = rsp_branch_mask(iw, 26); //is_jal
 
-  exdf_latch->result.result = 0x1000 | ((rdex_latch->common.pc + 8) & 0xFFC);
+  exdf_latch->result.result = (rdex_latch->common.pc + 8) & 0xFFC;
   exdf_latch->result.dest = RSP_REGISTER_RA & ~mask;
 
   ifrd_latch->pc = target;
@@ -343,11 +369,10 @@ void RSP_JALR_JR(struct rsp *rsp,
   struct rsp_rdex_latch *rdex_latch = &rsp->pipeline.rdex_latch;
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
 
-  bool is_jalr = iw & 0x1;
-  uint32_t mask = rsp_branch_lut[is_jalr];
+  uint32_t mask = rsp_branch_mask(iw, 0); // is_jalr
   unsigned rd = GET_RD(iw);
 
-  exdf_latch->result.result = 0x1000 | ((rdex_latch->common.pc + 8) & 0xFFC);
+  exdf_latch->result.result = (rdex_latch->common.pc + 8) & 0xFFC;
   exdf_latch->result.dest = rd & ~mask;
 
   ifrd_latch->pc = rs & 0xFFC;
@@ -367,16 +392,17 @@ void RSP_LBDLSV_SBDLSV(struct rsp *rsp,
   uint32_t iw, uint32_t rs, uint32_t rt) {
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
   unsigned shift_and_idx = iw >> 11 & 0x3;
+  unsigned op = iw >> 29 & 0x1;
   unsigned dest = GET_VT(iw);
 
-  exdf_latch->request.addr = rs + (sign_extend_6(iw & 0x7F) << shift_and_idx);
+  exdf_latch->request.addr = rs + (sign_extend_6(iw) << shift_and_idx);
 
-  __m128i vdqm = _mm_loadl_epi64((__m128i *) (rsp_bdls_lut[shift_and_idx]));
+  __m128i vdqm = _mm_loadl_epi64((__m128i *) (rsp_bdls_lut[op][shift_and_idx]));
   _mm_store_si128((__m128i *) exdf_latch->request.packet.p_vect.vdqm.e, vdqm);
 
   exdf_latch->request.packet.p_vect.element = GET_EL(iw);
   exdf_latch->request.type = RSP_MEM_REQUEST_VECTOR;
-  exdf_latch->request.packet.p_vect.vldst_func = (iw >> 29 & 0x1)
+  exdf_latch->request.packet.p_vect.vldst_func = op
     ? rsp_vstore_group1
     : rsp_vload_group1;
 
@@ -401,7 +427,7 @@ void RSP_LFHPUV_SFHPUV(struct rsp *rsp,
     RSP_MEM_REQUEST_FOURTH
   };
 
-  exdf_latch->request.addr = rs + (sign_extend_6(iw & 0x7F) << 3);
+  exdf_latch->request.addr = rs + (sign_extend_6(iw) << 3);
 
 //  memcpy(&exdf_latch->request.vdqm.e,
 //    rsp_fhpu_lut[exdf_latch->request.addr & 0xF],
@@ -424,9 +450,10 @@ void RSP_LFHPUV_SFHPUV(struct rsp *rsp,
 void RSP_LQRV_SQRV(struct rsp *rsp,
   uint32_t iw, uint32_t rs, uint32_t rt) {
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
+  unsigned op = iw >> 29 & 0x1;
   unsigned dest = GET_VT(iw);
 
-  exdf_latch->request.addr = rs + (sign_extend_6(iw & 0x7F) << 4);
+  exdf_latch->request.addr = rs + (sign_extend_6(iw) << 4);
 
   memcpy(exdf_latch->request.packet.p_vect.vdqm.e,
     rsp_qr_lut[exdf_latch->request.addr & 0xF],
@@ -437,7 +464,7 @@ void RSP_LQRV_SQRV(struct rsp *rsp,
     ? RSP_MEM_REQUEST_REST
     : RSP_MEM_REQUEST_QUAD;
 
-  exdf_latch->request.packet.p_vect.vldst_func = (iw >> 29 & 0x1)
+  exdf_latch->request.packet.p_vect.vldst_func = op
     ? rsp_vstore_group4
     : rsp_vload_group4;
 

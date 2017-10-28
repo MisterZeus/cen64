@@ -1,8 +1,8 @@
 //
 // vr4300/pipeline.c: VR4300 processor pipeline.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -123,7 +123,7 @@ static int vr4300_ex_stage(struct vr4300 *vr4300) {
   const struct vr4300_rfex_latch *rfex_latch = &vr4300->pipeline.rfex_latch;
   const struct vr4300_dcwb_latch *dcwb_latch = &vr4300->pipeline.dcwb_latch;
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
-  uint32_t status = vr4300->regs[VR4300_CP0_REGISTER_STATUS];
+  uint32_t cp0_status = vr4300->regs[VR4300_CP0_REGISTER_STATUS];
 
   unsigned rs, rt, rslutidx, rtlutidx;
   uint64_t rs_reg, rt_reg, temp;
@@ -137,18 +137,18 @@ static int vr4300_ex_stage(struct vr4300 *vr4300) {
   rt = GET_RT(iw);
 
   if (flags & OPCODE_INFO_FPU) {
-    cen64_align(const unsigned fpu_select_lut[2], 8) = {21, 11};
+    cen64_align(static const unsigned fpu_select_lut[2], 8) = {21, 11};
     unsigned fr;
 
     // Dealing with FPU state, is CP1 usable?
-    if (unlikely(!(status & 0x20000000U))) {
+    if (unlikely(!(cp0_status & 0x20000000U))) {
       VR4300_CPU(vr4300);
       return 1;
     }
 
     // Check if one of the sources is an FPU register. Furthermore,
     // if Status.FR bit is clear, we depend on even registers only.
-    fr = (status >> 26 & 0x1) ^ 0x1;
+    fr = (cp0_status >> 26 & 0x1) ^ 0x1;
     rtlutidx = flags & 0x2;
     rslutidx = flags & 0x1;
 
@@ -196,8 +196,8 @@ static int vr4300_dc_stage(struct vr4300 *vr4300) {
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
   struct vr4300_dcwb_latch *dcwb_latch = &vr4300->pipeline.dcwb_latch;
 
-  uint32_t status = vr4300->regs[VR4300_CP0_REGISTER_STATUS];
-  uint32_t cause = vr4300->regs[VR4300_CP0_REGISTER_CAUSE];
+  uint32_t cp0_status = vr4300->regs[VR4300_CP0_REGISTER_STATUS];
+  uint32_t cp0_cause = vr4300->regs[VR4300_CP0_REGISTER_CAUSE];
   const struct segment *segment = exdc_latch->segment;
   bool cached;
 
@@ -214,7 +214,8 @@ static int vr4300_dc_stage(struct vr4300 *vr4300) {
   }
 
   // Check if we should raise an interrupt (and effectively kill this insn).
-  if (unlikely(cause & status & 0xFF00 && (((status ^ 6) & 0x7) == 0x7))) {
+  if (unlikely(cp0_cause & cp0_status & 0xFF00 &&
+    (((cp0_status ^ 6) & 0x7) == 0x7))) {
     VR4300_INTR(vr4300);
     return 1;
   }
@@ -227,8 +228,6 @@ static int vr4300_dc_stage(struct vr4300 *vr4300) {
     uint32_t paddr;
 
     if ((vaddr - segment->start) >= segment->length) {
-      uint32_t cp0_status = vr4300->regs[VR4300_CP0_REGISTER_STATUS];
-
       if (unlikely((segment = get_segment(vaddr, cp0_status)) == NULL)) {
         VR4300_DADE(vr4300);
         return 1;
@@ -253,8 +252,7 @@ static int vr4300_dc_stage(struct vr4300 *vr4300) {
       tlb_inv = !(vr4300->cp0.state[index][select] & 2);
 
       tlb_mod = !(vr4300->cp0.state[index][select] & 4) &&
-        (request->type == VR4300_BUS_REQUEST_WRITE ||
-         request->type == VR4300_BUS_REQUEST_CACHE_WRITE);
+        request->type == VR4300_BUS_REQUEST_WRITE;
 
       if (unlikely(tlb_miss | tlb_inv | tlb_mod)) {
         VR4300_DTLB(vr4300, tlb_miss, tlb_inv, tlb_mod);
@@ -277,31 +275,57 @@ static int vr4300_dc_stage(struct vr4300 *vr4300) {
       }
     }
 
-    // If not cached or we miss in the DC, it's an DCB.
+    // If not cached or we miss in the DC, it's an DCM.
     if (likely(exdc_latch->request.type < VR4300_BUS_REQUEST_CACHE)) {
       uint64_t dword, rtemp, wtemp, wdqm;
-
-      unsigned shiftamt = ((paddr ^ WORD_ADDR_XOR) << 3) & request->access_type;
-      unsigned rshiftamt = (8 - request->size) << 3;
-      unsigned lshiftamt = (paddr & 0x7) << 3;
+      unsigned shiftamt, rshiftamt, lshiftamt;
+      uint32_t s_paddr;
 
       line = vr4300_dcache_probe(&vr4300->dcache, vaddr, paddr);
 
-      if (!(line && cached)) {
+      if (cached) {
+        bool last_cache_was_store = dcwb_latch->last_op_was_cache_store;
+        dcwb_latch->last_op_was_cache_store = (exdc_latch->request.type ==
+          VR4300_BUS_REQUEST_WRITE);
+
+        if (!line) {
+          request->paddr = paddr;
+          exdc_latch->cached = cached;
+
+          // Miss: stall for one cycle, then move to the DCM phase.
+          vr4300->pipeline.cycles_to_stall = 0;
+          vr4300->regs[PIPELINE_CYCLE_TYPE] = 6;
+          return 1;
+        }
+
+        // Cached store-to-cached operation will result in a DCB.
+        if (last_cache_was_store) {
+          VR4300_DCB(vr4300);
+          return 1;
+        }
+      }
+
+      else {
+        dcwb_latch->last_op_was_cache_store = false;
+
         request->paddr = paddr;
         exdc_latch->cached = cached;
-
         VR4300_DCM(vr4300);
         return 1;
       }
 
+      s_paddr = paddr << 3;
       paddr &= 0x8;
-      wdqm = request->wdqm << shiftamt;
 
       // Pull out the cache line data, mux stuff around
       // to produce the output/update the cache line.
       memcpy(&dword, line->data + paddr, sizeof(dword));
 
+      shiftamt = (s_paddr ^ (WORD_ADDR_XOR << 3)) & request->access_type;
+      rshiftamt = (8 - request->size) << 3;
+      lshiftamt = (s_paddr & (0x7 << 3));
+
+      wdqm = request->wdqm << shiftamt;
       wtemp = (request->data << shiftamt) & wdqm;
       rtemp = ((int64_t) (dword << lshiftamt)
         >> rshiftamt) & request->data;
@@ -319,8 +343,15 @@ static int vr4300_dc_stage(struct vr4300 *vr4300) {
     }
 
     // Not a load/store, so execute cache operation.
-    else
-      return request->cacheop(vr4300, vaddr, paddr);
+    else {
+      unsigned delay;
+
+      if ((delay = request->cacheop(vr4300, vaddr, paddr))) {
+        vr4300->pipeline.cycles_to_stall = delay - 1;
+        vr4300->regs[PIPELINE_CYCLE_TYPE] = 2;
+        return 1;
+      }
+    }
   }
 
   return 0;
@@ -433,11 +464,12 @@ void vr4300_cycle_slow_ic(struct vr4300 *vr4300) {
 
 // Special-cased busy wait handler.
 void vr4300_cycle_busywait(struct vr4300 *vr4300) {
-  uint32_t status = vr4300->regs[VR4300_CP0_REGISTER_STATUS];
-  uint32_t cause = vr4300->regs[VR4300_CP0_REGISTER_CAUSE];
+  uint32_t cp0_status = vr4300->regs[VR4300_CP0_REGISTER_STATUS];
+  uint32_t cp0_cause = vr4300->regs[VR4300_CP0_REGISTER_CAUSE];
 
   // Check if the busy wait period is over (due to an interrupt condition).
-  if (unlikely(cause & status & 0xFF00) && (status & 0x1) && !(status & 0x6)) {
+  if (unlikely(cp0_cause & cp0_status & 0xFF00)
+    && (cp0_status & 0x1) && !(cp0_status & 0x6)) {
     //debug("Busy wait done @ %llu cycles\n", vr4300->cycles);
 
     VR4300_INTR(vr4300);
@@ -454,28 +486,17 @@ cen64_align(static const pipeline_function
   vr4300_cycle_slow_ic,
 
   vr4300_cycle_busywait,
-  VR4300_DCB,
+  VR4300_DCM,
 };
 
 // Advances the processor pipeline by one pclock.
-void vr4300_cycle(struct vr4300 *vr4300) {
+void vr4300_cycle_(struct vr4300 *vr4300) {
   struct vr4300_pipeline *pipeline = &vr4300->pipeline;
-
-  // Increment counters.
-  vr4300->regs[VR4300_CP0_REGISTER_COUNT]++;
-
-  if ((uint32_t) (vr4300->regs[VR4300_CP0_REGISTER_COUNT] >> 1) ==
-    (uint32_t) vr4300->regs[VR4300_CP0_REGISTER_COMPARE])
-    vr4300->regs[VR4300_CP0_REGISTER_CAUSE] |= 0x8000;
-
-  // We're stalling for something...
-  if (pipeline->cycles_to_stall > 0)
-    pipeline->cycles_to_stall--;
 
   // Ordinarily, we would need to check every pipeline stage to see if it is
   // aborted, and conditionally not execute it. Since faults are rare, we'll
   // only bother checking for aborted stages when we know they can be present.
-  else if (pipeline->fault_present + vr4300->regs[PIPELINE_CYCLE_TYPE])
+  if (pipeline->fault_present + vr4300->regs[PIPELINE_CYCLE_TYPE])
     pipeline_function_lut[vr4300->regs[PIPELINE_CYCLE_TYPE]](vr4300);
 
   else {

@@ -1,8 +1,8 @@
 //
 // arch/x86_64/tlb/tlb.h: Translation lookaside buffer.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -23,11 +23,12 @@ struct cen64_tlb {
   union aligned_tlb_data vpn2;
   uint8_t global[32];
   uint8_t asid[32];
+  uint8_t valid[32];
 };
 
 cen64_cold void tlb_init(struct cen64_tlb *tlb);
 
-unsigned tlb_probe(const struct cen64_tlb *tlb, uint64_t vpn2,
+cen64_hot unsigned tlb_probe(const struct cen64_tlb *tlb, uint64_t vpn2,
   uint8_t vasid, unsigned *index);
 
 int tlb_read(const struct cen64_tlb *tlb, unsigned index, uint64_t *entry_hi);

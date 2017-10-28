@@ -1,17 +1,22 @@
 //
 // vi/controller.h: Video interface controller.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
 //
 
-#ifndef __vi_controller_h__
-#define __vi_controller_h__
+#ifndef CEN64_VI_CONTROLLER_H
+#define CEN64_VI_CONTROLLER_H
 #include "common.h"
-#include "os/gl_window.h"
+#include "gl_common.h"
+#include "gl_context.h"
+#include "gl_display.h"
+#include "gl_screen.h"
+#include "gl_window.h"
+#include "timer.h"
 
 struct bus_controller *bus;
 
@@ -43,20 +48,29 @@ struct render_area {
 };
 
 struct vi_controller {
-  struct gl_window gl_window;
-
   struct bus_controller *bus;
   uint32_t regs[NUM_VI_REGISTERS];
 
   uint32_t counter;
+
+  // Client rendering structures.
+  cen64_gl_display display;
+  cen64_gl_screen screen;
+  cen64_gl_window window;
+  cen64_gl_context context;
+
   struct render_area render_area;
+  float viuv[8];
+  float quad[8];
+
+  cen64_time last_update_time;
+  unsigned intr_counter;
+  unsigned frame_count;
+  unsigned field;
 };
 
-cen64_cold void gl_window_init(struct gl_window *window);
-void gl_window_render_frame(struct gl_window *gl_window, const uint8_t *buffer,
-  unsigned hres, unsigned vres, unsigned hskip, unsigned type);
-
-cen64_cold int vi_init(struct vi_controller *vi, struct bus_controller *bus);
+cen64_cold int vi_init(struct vi_controller *vi, struct bus_controller *bus,
+  bool no_interface);
 
 cen64_flatten cen64_hot void vi_cycle(struct vi_controller *vi);
 

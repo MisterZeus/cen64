@@ -1,29 +1,30 @@
 //
 // device/netapi.c: CEN64 device network API.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
 //
 
 #include "common.h"
-#include "device/device.h"
-#include "device/netapi.h"
-#include "vr4300/cpu.h"
-#include "vr4300/pipeline.h"
 
-#ifdef __WIN32__
-#include <ws2tcpip.h>
+#ifdef _WIN32
 #include <winsock2.h>
 #include <windows.h>
+#include <ws2tcpip.h>
 #else
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 #endif
+
+#include "device/device.h"
+#include "device/netapi.h"
+#include "vr4300/cpu.h"
+#include "vr4300/pipeline.h"
 
 // TODO: Really sloppy.
 #ifdef __WIN32__

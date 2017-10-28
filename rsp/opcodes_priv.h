@@ -1,8 +1,8 @@
 //
 // rsp/opcodes_priv.h: RSP opcode types and info.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -69,7 +69,7 @@
 #define MTC0 RSP_BUILD_OP(MTC0, MTC0, INFO1(NEEDRT))
 
 #define CFC2 RSP_BUILD_OP(CFC2, CFC2, INFO1(NONE))
-#define CTC2 RSP_BUILD_OP(CTC2, INVALID, INFO1(NONE))
+#define CTC2 RSP_BUILD_OP(CTC2, CTC2, INFO1(NEEDRT))
 #define MFC2 RSP_BUILD_OP(MFC2, MFC2, INFO1(NONE))
 #define MTC2 RSP_BUILD_OP(MTC2, MTC2, INFO1(NEEDRT))
 

@@ -1,8 +1,8 @@
 //
 // vr4300/decoder.h: VR4300 decoder.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -29,6 +29,8 @@
 #define OPCODE_INFO_NEEDFS ((1U << 3) | (1U << 0))
 #define OPCODE_INFO_NEEDRT (1U << 4)
 #define OPCODE_INFO_NEEDFT ((1U << 4) | (1U << 1))
+#define OPCODE_INFO_LOAD (1U << 5)
+#define OPCODE_INFO_STORE (1U << 6)
 
 enum vr4300_fmt {
   VR4300_FMT_S = 16,

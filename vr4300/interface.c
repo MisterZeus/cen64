@@ -1,8 +1,8 @@
 //
 // vr4300/interface.c: VR4300 interface.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -12,6 +12,9 @@
 #include "bus/address.h"
 #include "vr4300/cpu.h"
 #include "vr4300/interface.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #define MI_EBUS_TEST_MODE 0x0080
 #define MI_INIT_MODE      0x0100
@@ -21,8 +24,8 @@ static void lower_rcp_interrupt(struct vr4300 *vr4300);
 static void raise_rcp_interrupt(struct vr4300 *vr4300);
 
 // Checks for interrupts, possibly sets the cause bit.
-static void check_for_interrupts(struct vr4300 *vr4300) {
-  if (vr4300->mi_regs[MI_INTR_REG] & vr4300->mi_regs[MI_INTR_MASK_REG])
+static void check_for_interrupts(struct vr4300 *vr4300, uint32_t flags) {
+  if (flags & vr4300->mi_regs[MI_INTR_MASK_REG])
     raise_rcp_interrupt(vr4300);
   else
     lower_rcp_interrupt(vr4300);
@@ -30,34 +33,58 @@ static void check_for_interrupts(struct vr4300 *vr4300) {
 
 // Callback: An RCP component is clearing an interrupt.
 void clear_rcp_interrupt(struct vr4300 *vr4300, enum rcp_interrupt_mask mask) {
-  vr4300->mi_regs[MI_INTR_REG] &= ~mask;
-  check_for_interrupts(vr4300); // TODO/FIXME: ???
+#ifdef _MSC_VER
+  uint32_t flags = InterlockedAnd(&vr4300->mi_regs[MI_INTR_REG], ~mask) & ~mask;
+#else
+  uint32_t flags = __sync_and_and_fetch(&vr4300->mi_regs[MI_INTR_REG], ~mask);
+#endif
+  check_for_interrupts(vr4300, flags); // TODO/FIXME: ???
 }
 
 // Deasserts the interrupt signal from the RCP.
 static void lower_rcp_interrupt(struct vr4300 *vr4300) {
-  vr4300->regs[VR4300_CP0_REGISTER_CAUSE] &= ~0x400;
+#ifdef _MSC_VER
+  InterlockedAnd(&vr4300->regs[VR4300_CP0_REGISTER_CAUSE], ~0x400);
+#else
+  __sync_and_and_fetch(&vr4300->regs[VR4300_CP0_REGISTER_CAUSE], ~0x400);
+#endif
 }
 
 // Asserts the interrupt signal from the RCP.
 static void raise_rcp_interrupt(struct vr4300 *vr4300) {
-  vr4300->regs[VR4300_CP0_REGISTER_CAUSE] |= 0x400;
+#ifdef _MSC_VER
+  InterlockedOr(&vr4300->regs[VR4300_CP0_REGISTER_CAUSE], 0x400);
+#else
+  __sync_or_and_fetch(&vr4300->regs[VR4300_CP0_REGISTER_CAUSE], 0x400);
+#endif
 }
 
 // Deasserts the interrupt signal from the 64DD.
 void clear_dd_interrupt(struct vr4300 *vr4300) {
-  vr4300->regs[VR4300_CP0_REGISTER_CAUSE] &= ~0x800;
+#ifdef _MSC_VER
+  InterlockedAnd(&vr4300->regs[VR4300_CP0_REGISTER_CAUSE], ~0x800);
+#else
+  __sync_and_and_fetch(&vr4300->regs[VR4300_CP0_REGISTER_CAUSE], ~0x800);
+#endif
 }
 
 // Asserts the interrupt signal from the 64DD.
 void signal_dd_interrupt(struct vr4300 *vr4300) {
-  vr4300->regs[VR4300_CP0_REGISTER_CAUSE] |= 0x800;
+#ifdef _MSC_VER
+  InterlockedOr(&vr4300->regs[VR4300_CP0_REGISTER_CAUSE], 0x800);
+#else
+  __sync_or_and_fetch(&vr4300->regs[VR4300_CP0_REGISTER_CAUSE], 0x800);
+#endif
 }
 
 // Callback: An RCP component is signaling an interrupt.
 void signal_rcp_interrupt(struct vr4300 *vr4300, enum rcp_interrupt_mask mask) {
-  vr4300->mi_regs[MI_INTR_REG] |= mask;
-  check_for_interrupts(vr4300); // TODO/FIXME: ???
+#ifdef _MSC_VER
+  uint32_t flags = InterlockedOr(&vr4300->mi_regs[MI_INTR_REG], mask) | mask;
+#else
+  uint32_t flags = __sync_or_and_fetch(&vr4300->mi_regs[MI_INTR_REG], mask);
+#endif
+  check_for_interrupts(vr4300, flags); // TODO/FIXME: ???
 }
 
 // Reads a word from the MI MMIO register space.
@@ -77,6 +104,7 @@ int write_mi_regs(void *opaque, uint32_t address, uint32_t word, uint32_t dqm) {
   uint32_t offset = address - MI_REGS_BASE_ADDRESS;
   enum mi_register reg = (offset >> 2);
   uint32_t result;
+  uint32_t flags;
 
   debug_mmio_write(mi, mi_register_mnemonics[reg], word, dqm);
 
@@ -95,8 +123,12 @@ int write_mi_regs(void *opaque, uint32_t address, uint32_t word, uint32_t dqm) {
       result |= MI_EBUS_TEST_MODE;
 
     if (word & 0x0800) {
-      vr4300->mi_regs[MI_INTR_REG] &= ~MI_INTR_DP;
-      check_for_interrupts(vr4300); // TODO/FIXME: ???
+#ifdef _MSC_VER
+      flags = InterlockedAnd(&vr4300->mi_regs[MI_INTR_REG], ~MI_INTR_DP) & ~MI_INTR_DP;
+#else
+      flags = __sync_and_and_fetch(&vr4300->mi_regs[MI_INTR_REG], ~MI_INTR_DP);
+#endif
+      check_for_interrupts(vr4300, flags); // TODO/FIXME: ???
     }
 
     if (word & 0x1000)
@@ -139,7 +171,7 @@ int write_mi_regs(void *opaque, uint32_t address, uint32_t word, uint32_t dqm) {
     else if (word & 0x0800)
       vr4300->mi_regs[MI_INTR_MASK_REG] |= MI_INTR_DP;
 
-    check_for_interrupts(vr4300); // TODO/FIXME: ???
+    check_for_interrupts(vr4300, vr4300->mi_regs[MI_INTR_REG]); // TODO/FIXME: ???
   }
 
   else {

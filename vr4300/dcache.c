@@ -1,8 +1,8 @@
 //
 // vr4300/dcache.c: VR4300 instruction cache.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -76,7 +76,7 @@ void vr4300_dcache_create_dirty_exclusive(
   struct vr4300_dcache_line *line = get_line(dcache, vaddr);
 
   set_tag(line, paddr & ~0xFFFU);
-  set_dirty(line);
+  line->metadata |= 0x3;
 }
 
 // Fills an instruction cache line with data.
@@ -98,7 +98,7 @@ uint32_t vr4300_dcache_get_taglo(struct vr4300_dcache *dcache, uint64_t vaddr) {
   struct vr4300_dcache_line *line = get_line(dcache, vaddr);
 
   uint32_t taglo = ((line->metadata & 0x1) << 1) | ((line->metadata & 0x2) >> 1);
-  return taglo | (line->metadata >> 4 & 0x0FFFFF00U);
+  return (taglo << 6) | (line->metadata >> 4 & 0x0FFFFF00U);
 }
 
 // Initializes the instruction cache.

@@ -1,8 +1,8 @@
 //
 // bus/controller.c: System bus controller.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -25,7 +25,7 @@
 #include "vr4300/cpu.h"
 #include "vr4300/interface.h"
 
-#define NUM_MAPPINGS 19
+#define NUM_MAPPINGS 17
 
 struct bus_controller_mapping {
   memory_rd_function read;
@@ -34,13 +34,16 @@ struct bus_controller_mapping {
   uint32_t length;
 };
 
+static int bus_open_read(void *opaque, uint32_t address, uint32_t *word);
+static int bus_dead_write(void *opaque, uint32_t address, uint32_t word,
+  uint32_t dqm);
+
 // Initializes the bus component.
-int bus_init(struct bus_controller *bus) {
+int bus_init(struct bus_controller *bus, int dd_present) {
   unsigned i;
 
   static const struct bus_controller_mapping mappings[NUM_MAPPINGS] = {
     {read_ai_regs, write_ai_regs, AI_REGS_BASE_ADDRESS, AI_REGS_ADDRESS_LEN},
-    {read_dd_regs, write_dd_regs, DD_REGS_BASE_ADDRESS, DD_REGS_ADDRESS_LEN},
     {read_dp_regs, write_dp_regs, DP_REGS_BASE_ADDRESS, DP_REGS_ADDRESS_LEN},
     {read_mi_regs, write_mi_regs, MI_REGS_BASE_ADDRESS, MI_REGS_ADDRESS_LEN},
     {read_pi_regs, write_pi_regs, PI_REGS_BASE_ADDRESS, PI_REGS_ADDRESS_LEN},
@@ -50,20 +53,18 @@ int bus_init(struct bus_controller *bus) {
     {read_vi_regs, write_vi_regs, VI_REGS_BASE_ADDRESS, VI_REGS_ADDRESS_LEN},
 
     {read_cart_rom, write_cart_rom, ROM_CART_BASE_ADDRESS, ROM_CART_ADDRESS_LEN},
-    {read_dd_c2s_buffer, write_dd_c2s_buffer, DD_C2S_BUFFER_ADDRESS, DD_C2S_BUFFER_LEN},
-    {read_dd_ds_buffer, write_dd_ds_buffer, DD_DS_BUFFER_ADDRESS, DD_DS_BUFFER_LEN},
-    {read_dd_ms_ram, write_dd_ms_ram, DD_MS_RAM_ADDRESS, DD_MS_RAM_LEN},
+    {read_flashram, write_flashram, FLASHRAM_BASE_ADDRESS, FLASHRAM_ADDRESS_LEN},
+    {read_dd_controller, write_dd_controller, DD_CONTROLLER_ADDRESS, DD_CONTROLLER_LEN},
     {read_dd_ipl_rom, write_dd_ipl_rom, DD_IPL_ROM_ADDRESS, DD_IPL_ROM_LEN},
-    {read_pif_ram, write_pif_ram, PIF_RAM_BASE_ADDRESS, PIF_RAM_ADDRESS_LEN},
-    {read_pif_rom, write_pif_rom, PIF_ROM_BASE_ADDRESS, PIF_ROM_ADDRESS_LEN},
+    {read_pif_rom_and_ram, write_pif_rom_and_ram, PIF_BASE_ADDRESS, PIF_ADDRESS_LEN},
     {read_rdram_regs, write_rdram_regs, RDRAM_REGS_BASE_ADDRESS, RDRAM_REGS_ADDRESS_LEN},
     {read_sp_regs2, write_sp_regs2, SP_REGS2_BASE_ADDRESS, SP_REGS2_ADDRESS_LEN},
     {read_sp_mem, write_sp_mem, SP_MEM_BASE_ADDRESS, SP_MEM_ADDRESS_LEN},
+    {read_sram, write_sram, SRAM_BASE_ADDRESS, SRAM_ADDRESS_LEN},
   };
 
   void *instances[NUM_MAPPINGS] = {
     bus->ai,
-    bus->dd,
     bus->rdp,
     bus->vr4300,
     bus->pi,
@@ -73,24 +74,45 @@ int bus_init(struct bus_controller *bus) {
     bus->vi,
 
     bus->pi,
+    bus->pi,
     bus->dd,
     bus->dd,
-    bus->dd,
-    bus->dd,
-    bus->si,
     bus->si,
     bus->ri,
     bus->rsp,
-    bus->rsp
+    bus->rsp,
+    bus->pi,
   };
 
   create_memory_map(&bus->map);
 
-  for (i = 0; i < NUM_MAPPINGS; i++)
-    if (map_address_range(&bus->map, mappings[i].address, mappings[i].length,
-      instances[i], mappings[i].read, mappings[i].write))
-      return 1;
+  for (i = 0; i < NUM_MAPPINGS; i++) {
+    memory_rd_function rd = mappings[i].read;
+    memory_wr_function wr = mappings[i].write;
+    void *instance = instances[i];
 
+    if (instance == bus->dd && !dd_present) {
+      rd = bus_open_read;
+      wr = bus_dead_write;
+      instance = NULL;
+    }
+
+    if (map_address_range(&bus->map, mappings[i].address, mappings[i].length,
+      instances[i], rd, wr))
+      return 1;
+  }
+
+  return 0;
+}
+
+// Open read (happens for non-mapped addresses)
+static int bus_open_read(void *opaque, uint32_t address, uint32_t *word) {
+  *word = (address >> 16) | (address & 0xFFFF0000);
+  return 0;
+}
+
+static int bus_dead_write(void *opaque, uint32_t address, uint32_t word,
+  uint32_t dqm) {
   return 0;
 }
 
@@ -107,7 +129,7 @@ int bus_read_word(void *component, uint32_t address, uint32_t *word) {
   else if ((node = resolve_mapped_address(&bus->map, address)) == NULL) {
     debug("bus_read_word: Failed to access: 0x%.8X\n", address);
 
-    *word = 0x00000000U;
+    *word = (address >> 16) | (address & 0xFFFF0000);
     return 0;
   }
 

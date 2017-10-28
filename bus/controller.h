@@ -1,8 +1,8 @@
 //
 // bus/controller.h: System bus controller.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -46,7 +46,7 @@ struct bus_controller {
   jmp_buf unwind_data;
 };
 
-cen64_cold int bus_init(struct bus_controller *bus);
+cen64_cold int bus_init(struct bus_controller *bus, int dd_present);
 
 // General-purpose accesssor functions.
 cen64_flatten cen64_hot int bus_read_word(void *component,

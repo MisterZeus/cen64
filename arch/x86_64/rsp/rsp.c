@@ -56,7 +56,7 @@ cen64_align(const uint16_t shuffle_keys[16][8], CACHE_LINE_SIZE)  = {
 //
 
 // Shift left LUT; shifts in zeros from the right, one byte at a time.
-cen64_align(const uint16_t sll_b2l_keys[16][8], CACHE_LINE_SIZE) = {
+cen64_align(static const uint16_t sll_b2l_keys[16][8], CACHE_LINE_SIZE) = {
   {0x0001, 0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D, 0x0E0F},
   {0x8000, 0x0102, 0x0304, 0x0506, 0x0708, 0x090A, 0x0B0C, 0x0D0E},
   {0x8080, 0x0001, 0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D},
@@ -79,7 +79,7 @@ cen64_align(const uint16_t sll_b2l_keys[16][8], CACHE_LINE_SIZE) = {
 };
 
 // Shift left LUT; shirts low order to high order, inserting 0x00s.
-cen64_align(const uint16_t sll_l2b_keys[16][8], CACHE_LINE_SIZE) = {
+cen64_align(static const uint16_t sll_l2b_keys[16][8], CACHE_LINE_SIZE) = {
   {0x0001, 0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D, 0x0E0F},
   {0x0180, 0x0300, 0x0502, 0x0704, 0x0906, 0x0B08, 0x0D0A, 0x0E0C},
   {0x8080, 0x0001, 0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D},
@@ -102,7 +102,7 @@ cen64_align(const uint16_t sll_l2b_keys[16][8], CACHE_LINE_SIZE) = {
 };
 
 // Shift right LUT; shifts in zeros from the left, one byte at a time.
-cen64_align(const uint16_t srl_b2l_keys[16][8], CACHE_LINE_SIZE) = {
+cen64_align(static const uint16_t srl_b2l_keys[16][8], CACHE_LINE_SIZE) = {
   {0x0001, 0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D, 0x0E0F},
   {0x0102, 0x0304, 0x0506, 0x0708, 0x090A, 0x0B0C, 0x0D0E, 0x0F80},
   {0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D, 0x0E0F, 0x8080},
@@ -124,7 +124,7 @@ cen64_align(const uint16_t srl_b2l_keys[16][8], CACHE_LINE_SIZE) = {
   {0x0F80, 0x8080, 0x8080, 0x8080, 0x8080, 0x8080, 0x8080, 0x8080},
 };
 
-cen64_align(const uint16_t ror_b2l_keys[16][8], CACHE_LINE_SIZE) = {
+cen64_align(static const uint16_t ror_b2l_keys[16][8], CACHE_LINE_SIZE) = {
   {0x0001, 0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D, 0x0E0F},
   {0x0102, 0x0304, 0x0506, 0x0708, 0x090A, 0x0B0C, 0x0D0E, 0x0F00},
   {0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D, 0x0E0F, 0x0001},
@@ -147,7 +147,7 @@ cen64_align(const uint16_t ror_b2l_keys[16][8], CACHE_LINE_SIZE) = {
 };
 
 // Rotate left LUT; rotates high order bytes back to low order.
-cen64_align(const uint16_t rol_l2b_keys[16][8], CACHE_LINE_SIZE) = {
+cen64_align(static const uint16_t rol_l2b_keys[16][8], CACHE_LINE_SIZE) = {
   {0x0001, 0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D, 0x0E0F},
   {0x010E, 0x0300, 0x0502, 0x0704, 0x0906, 0x0B08, 0x0D0A, 0x0F0C},
   {0x0E0F, 0x0001, 0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D},
@@ -170,7 +170,7 @@ cen64_align(const uint16_t rol_l2b_keys[16][8], CACHE_LINE_SIZE) = {
 };
 
 // Rotate right LUT; rotates high order bytes back to low order.
-cen64_align(const uint16_t ror_l2b_keys[16][8], CACHE_LINE_SIZE) = {
+cen64_align(static const uint16_t ror_l2b_keys[16][8], CACHE_LINE_SIZE) = {
   {0x0001, 0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D, 0x0E0F},
   {0x0300, 0x0502, 0x0704, 0x0906, 0x0B08, 0x0D0A, 0x0F0C, 0x010E},
   {0x0203, 0x0405, 0x0607, 0x0809, 0x0A0B, 0x0C0D, 0x0E0F, 0x0001},
@@ -192,30 +192,70 @@ cen64_align(const uint16_t ror_l2b_keys[16][8], CACHE_LINE_SIZE) = {
   {0x010E, 0x0300, 0x0502, 0x0704, 0x0906, 0x0B08, 0x0D0A, 0x0F0C},
 };
 
-// TODO: Highly optimized. More of a stopgap measure.
 #ifndef __SSSE3__
-static inline __m128i sse2_pshufb(__m128i v, const uint16_t *keys) {
-  uint8_t dest[16];
-  uint8_t temp[16];
+static inline __m128i sse2_pshufb_loop8(__m128i v, const uint8_t *keys) {
+  cen64_align(uint8_t temp[(0x80|128)+1], 16);
   unsigned j;
 
-  _mm_storeu_si128((__m128i *) temp, v);
+  _mm_store_si128((__m128i *) temp, v);
+  temp[0x80] = 0;
 
-  for (j = 0; j < 8; j++) {
-    uint16_t key = keys[j];
-    uint8_t key_hi = key >> 8;
-    uint8_t key_lo = key >> 0;
-
-    dest[(j << 1) + 1] = key_hi == 0x80 ? 0x00 : temp[key_hi];
-    dest[(j << 1) + 0] = key_lo == 0x80 ? 0x00 : temp[key_lo];
+  #if 0
+  for (j = 0; j < 16; j++)
+    temp[j + 16] = temp[keys[j]];
+  #else
+  for (j = 0; j < 16; j+=4) {
+    temp[j + 16] = temp[keys[j+0]];
+    temp[j + 17] = temp[keys[j+1]];
+    temp[j + 18] = temp[keys[j+2]];
+    temp[j + 19] = temp[keys[j+3]];
   }
+  #endif
 
-  return _mm_loadu_si128((__m128i *) dest);
+  return _mm_load_si128(((__m128i *)temp)+1);
+}
+static inline __m128i sse2_pshufb(__m128i v, const uint16_t *keys) {
+  union {
+    const uint16_t *k16;
+    const uint8_t *k8;
+  } x;
+  x.k16 = keys;
+  return sse2_pshufb_loop8(v, x.k8);
 }
 #endif
 
 // Deallocates dynarec buffers for SSE2.
 void arch_rsp_destroy(struct rsp *rsp) {}
+
+// Uses a LUT to populate flag registers.
+void rsp_set_flags(uint16_t *flags, uint16_t rt) {
+  unsigned i;
+
+  static const uint16_t array[16][4] = {
+    {0x0000, 0x0000, 0x0000, 0x0000},
+    {0xFFFF, 0x0000, 0x0000, 0x0000},
+    {0x0000, 0xFFFF, 0x0000, 0x0000},
+    {0xFFFF, 0xFFFF, 0x0000, 0x0000},
+    {0x0000, 0x0000, 0xFFFF, 0x0000},
+    {0xFFFF, 0x0000, 0xFFFF, 0x0000},
+    {0x0000, 0xFFFF, 0xFFFF, 0x0000},
+    {0xFFFF, 0xFFFF, 0xFFFF, 0x0000},
+    {0x0000, 0x0000, 0x0000, 0xFFFF},
+    {0xFFFF, 0x0000, 0x0000, 0xFFFF},
+    {0x0000, 0xFFFF, 0x0000, 0xFFFF},
+    {0xFFFF, 0xFFFF, 0x0000, 0xFFFF},
+    {0x0000, 0x0000, 0xFFFF, 0xFFFF},
+    {0xFFFF, 0x0000, 0xFFFF, 0xFFFF},
+    {0x0000, 0xFFFF, 0xFFFF, 0xFFFF},
+    {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF},
+  };
+
+  for (i = 0; i < 2; i++, rt >>= 4)
+    memcpy(flags + 8 + i * 4, array[rt & 0xF], sizeof(array[0]));
+
+  for (i = 0; i < 2; i++, rt >>= 4)
+    memcpy(flags + 0 + i * 4, array[rt & 0xF], sizeof(array[0]));
+}
 
 // Allocates dynarec buffers for SSE2.
 int arch_rsp_init(struct rsp *rsp) { return 0; }
@@ -223,49 +263,61 @@ int arch_rsp_init(struct rsp *rsp) { return 0; }
 #ifndef __SSSE3__
 __m128i rsp_vect_load_and_shuffle_operand(
   const uint16_t *src, unsigned element) {
-  uint16_t word_lo, word_hi;
-  uint64_t dword;
+  __m128i v;
 
-  // element => 0w ... 7w
-  if (element >= 8) {
-    memcpy(&word_lo, src + (element - 8), sizeof(word_lo));
-    dword = word_lo | ((uint32_t) word_lo << 16);
+  switch(element) {
+    case 0:
+    case 1:
+      v = _mm_load_si128((__m128i *) src);
+      return v;
 
-    return _mm_shuffle_epi32(_mm_loadl_epi64((__m128i *) &dword),
-      _MM_SHUFFLE(0,0,0,0));
-  }
-
-  // element => 0h ... 3h
-  else if (element >= 4) {
-    __m128i v;
-
-    memcpy(&word_hi, src + element - 0, sizeof(word_hi));
-    memcpy(&word_lo, src + element - 4, sizeof(word_lo));
-    dword = word_lo | ((uint32_t) word_hi << 16);
-
-    v = _mm_loadl_epi64((__m128i *) &dword);
-    v = _mm_shufflelo_epi16(v, _MM_SHUFFLE(1,1,0,0));
-    return _mm_shuffle_epi32(v, _MM_SHUFFLE(1,1,0,0));
-  }
-
-  // element => 0q ... 1q
-  else if (element >= 2) {
-    __m128i v = rsp_vect_load_unshuffled_operand(src);
-
-    if (element == 2) {
+    // element => 0q
+    case 2:
+      v = _mm_load_si128((__m128i *) src);
       v = _mm_shufflelo_epi16(v, _MM_SHUFFLE(2,2,0,0));
       v = _mm_shufflehi_epi16(v, _MM_SHUFFLE(2,2,0,0));
-    }
+      return v;
 
-    else {
+    // element => 1q
+    case 3:
+      v = _mm_load_si128((__m128i *) src);
       v = _mm_shufflelo_epi16(v, _MM_SHUFFLE(3,3,1,1));
       v = _mm_shufflehi_epi16(v, _MM_SHUFFLE(3,3,1,1));
-    }
+      return v;
 
-    return v;
+    // element => 0h ... 3h
+    case 4:
+    case 5:
+    case 6:
+    case 7:
+      __asm__("" : "=x"(v)); /* Do not remove. */
+      v = _mm_insert_epi16(v, src[element - 4], 0);
+      v = _mm_insert_epi16(v, src[element - 0], 1);
+      v = _mm_shufflelo_epi16(v, _MM_SHUFFLE(1,1,0,0));
+      v = _mm_shuffle_epi32(v, _MM_SHUFFLE(1,1,0,0));
+      return v;
+
+    // element => 0w ... 7w
+    case 8:
+    case 9:
+    case 10:
+    case 11:
+    case 12:
+    case 13:
+    case 14:
+    case 15:
+      __asm__("" : "=x"(v)); /* Do not remove. */
+      v = _mm_insert_epi16(v, src[element - 8], 0);
+      v = _mm_unpacklo_epi16(v, v);
+      v = _mm_shuffle_epi32(v, _MM_SHUFFLE(0,0,0,0));
+      return v;
   }
 
-  return rsp_vect_load_unshuffled_operand(src);
+  #ifdef NDEBUG
+  __builtin_unreachable();
+  #else
+  __builtin_trap();
+  #endif
 }
 #endif
 
@@ -350,10 +402,13 @@ void rsp_vload_group2(struct rsp *rsp, uint32_t addr, unsigned element,
     memcpy(&datalow, rsp->mem + aligned_addr_lo, sizeof(datalow));
     memcpy(&datahigh, rsp->mem + aligned_addr_hi, sizeof(datahigh));
 
-    // TODO: Test for endian issues?
+    // TODO: Get rid of GNU extensions.
+    datalow = __builtin_bswap64(datalow);
+    datahigh = __builtin_bswap64(datahigh);
     datahigh >>= ((8 - offset) << 3);
     datalow <<= (offset << 3);
     datalow = datahigh | datalow;
+    datalow = __builtin_bswap64(datalow);
 
     data = _mm_loadl_epi64((__m128i *) &datalow);
   }
@@ -388,14 +443,11 @@ void rsp_vload_group4(struct rsp *rsp, uint32_t addr, unsigned element,
   __m128i data = _mm_load_si128((__m128i *) (rsp->mem + aligned_addr));
   __m128i dkey;
 
-  if (rsp->pipeline.exdf_latch.request.type == RSP_MEM_REQUEST_QUAD)
-    ror = 16 - element + offset;
+  // TODO: Use of element is almost certainly wrong...
+  ror = 16 - element + offset;
 
-  // TODO: How is this adjusted for LRV when e != 0?
-  else {
+  if (rsp->pipeline.exdf_latch.request.type != RSP_MEM_REQUEST_QUAD)
     dqm = _mm_cmpeq_epi8(_mm_setzero_si128(), dqm);
-    ror = 16 - offset;
-  }
 
 #ifndef __SSSE3__
   data = sse2_pshufb(data, ror_b2l_keys[ror & 0xF]);

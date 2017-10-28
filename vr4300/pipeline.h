@@ -1,8 +1,8 @@
 //
 // vr4300/pipeline.h: VR4300 processor pipeline.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -80,6 +80,7 @@ struct vr4300_dcwb_latch {
   struct vr4300_latch common;
   int64_t result;
   uint32_t dest;
+  bool last_op_was_cache_store;
 };
 
 struct vr4300_pipeline {

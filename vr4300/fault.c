@@ -1,8 +1,8 @@
 //
 // vr4300/fault.c: VR4300 fault management.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -191,9 +191,17 @@ void vr4300_exception_epilogue(struct vr4300 *vr4300,
   pipeline->cycles_to_stall = 2;
 
   // Set CP0 registers in accordance with the exception.
-  vr4300->regs[VR4300_CP0_REGISTER_STATUS] = status | 0x2;
+  if (vr4300->regs[VR4300_CP0_REGISTER_STATUS] & 0x2) {
+    vr4300->regs[VR4300_CP0_REGISTER_STATUS] = status | 0x4;
+    vr4300->regs[VR4300_CP0_REGISTER_ERROREPC] = epc;
+  }
+
+  else {
+    vr4300->regs[VR4300_CP0_REGISTER_STATUS] = status | 0x2;
+    vr4300->regs[VR4300_CP0_REGISTER_EPC] = epc;
+  }
+
   vr4300->regs[VR4300_CP0_REGISTER_CAUSE] = cause;
-  vr4300->regs[VR4300_CP0_REGISTER_EPC] = epc;
 
   vr4300->pipeline.icrf_latch.pc = ((status & 0x400000)
     ? (0xFFFFFFFFBFC00200ULL + offs)
@@ -220,6 +228,12 @@ void VR4300_DADE(struct vr4300 *vr4300) {
 
 // DCB: Data cache busy interlock.
 void VR4300_DCB(struct vr4300 *vr4300) {
+  vr4300->pipeline.dcwb_latch.last_op_was_cache_store = false;
+  vr4300_common_interlocks(vr4300, 0, 1);
+}
+
+// DCM: Data cache busy interlock.
+void VR4300_DCM(struct vr4300 *vr4300) {
   struct vr4300_dcwb_latch *dcwb_latch = &vr4300->pipeline.dcwb_latch;
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
   struct vr4300_bus_request *request = &exdc_latch->request;
@@ -303,11 +317,6 @@ void VR4300_DCB(struct vr4300 *vr4300) {
   vr4300_dcache_fill(&vr4300->dcache, vaddr, paddr, data);
 }
 
-// DCM: Data cache miss interlock.
-void VR4300_DCM(struct vr4300 *vr4300) {
-  vr4300_common_interlocks(vr4300, 0, 6);
-}
-
 // DTLB: Data TLB exception.
 void VR4300_DTLB(struct vr4300 *vr4300, unsigned miss, unsigned inv, unsigned mod) {
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
@@ -319,7 +328,7 @@ void VR4300_DTLB(struct vr4300 *vr4300, unsigned miss, unsigned inv, unsigned mo
 
   // TLB miss/invalid exceptions are either TLBL or TLBS.
   if (miss | inv)
-    type = (exdc_latch->request.type == VR4300_BUS_REQUEST_READ) ? 0x2: 0x3;
+    type = (exdc_latch->request.type == VR4300_BUS_REQUEST_WRITE) ? 0x3: 0x2;
 
   // OTOH, TLB modification exceptions are TLBM.
   else
@@ -331,7 +340,7 @@ void VR4300_DTLB(struct vr4300 *vr4300, unsigned miss, unsigned inv, unsigned mo
 
   // We calculated the vector offset for TLB miss exceptions.
   // TLB invalid and modification exceptions always use the GPE.
-  if (!miss)
+  if (!miss && !mod)
     offs = 0x180;
 
   vr4300_exception_epilogue(vr4300, (cause & ~0xFF) | (type << 2),
@@ -450,6 +459,18 @@ void VR4300_RST(struct vr4300 *vr4300) {
     vr4300->regs[VR4300_CP0_REGISTER_STATUS],
     vr4300->regs[VR4300_CP0_REGISTER_EPC],
     -0x200ULL);
+}
+
+// SYSC: System call exception.
+void VR4300_SYSC(struct vr4300 *vr4300) {
+  struct vr4300_latch *common = &vr4300->pipeline.exdc_latch.common;
+  uint32_t cause, status;
+  uint64_t epc;
+
+  vr4300_ex_fault(vr4300, VR4300_FAULT_SYSC);
+  vr4300_exception_prolog(vr4300, common, &cause, &status, &epc);
+  vr4300_exception_epilogue(vr4300, (cause & ~0xFF) | 0x20,
+    status, epc, 0x180);
 }
 
 // WAT: Watch exception.

@@ -1,8 +1,8 @@
 //
 // options.h: Common CEN64 simulation options.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -19,12 +19,22 @@ struct cen64_options {
   const char *cart_path;
   const char *debugger_addr;
 
+  const char *eeprom_path;
+  size_t eeprom_size;
+  const char *sram_path;
+  const char *flashram_path;
+  int is_viewer_present;
+
+  struct controller *controller;
+
 #ifdef _WIN32
   bool console;
 #endif
 
   bool enable_debugger;
-  bool no_interface;
+  bool multithread;
+  bool no_audio;
+  bool no_video;
 };
 
 extern const struct cen64_options default_cen64_options;
